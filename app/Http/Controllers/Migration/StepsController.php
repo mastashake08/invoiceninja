@@ -124,12 +124,13 @@ class StepsController extends BaseController
             return back()->with('responseErrors', [trans('texts.cross_migration_message')]);
         }
 
-        $authentication = (new AuthService($request->email, $request->password))
+        $authentication = (new AuthService($request->email, $request->password, $request->has('api_secret') ? $request->api_secret : null))
             ->endpoint(session('MIGRATION_ENDPOINT'))
             ->start();
 
         if ($authentication->isSuccessful()) {
             session()->put('MIGRATION_ACCOUNT_TOKEN', $authentication->getAccountToken());
+            session()->put('MIGRAITON_API_SECRET', $authentication->getApiSecret());
 
             return redirect(
                 url('/migration/companies')
@@ -225,11 +226,14 @@ class StepsController extends BaseController
             $fileName = "{$accountKey}-{$date}-invoiceninja";
 
             $localMigrationData['data'] = [
+                'account' => $this->getAccount(),
                 'company' => $this->getCompany(),
                 'users' => $this->getUsers(),
                 'tax_rates' => $this->getTaxRates(),
                 'payment_terms' => $this->getPaymentTerms(),
                 'clients' => $this->getClients(),
+                'company_gateways' => $this->getCompanyGateways(),
+                'client_gateway_tokens' => $this->getClientGatewayTokens(),
                 'vendors' => $this->getVendors(),
                 'projects' => $this->getProjects(),
                 'products' => $this->getProducts(),
@@ -239,8 +243,6 @@ class StepsController extends BaseController
                 'quotes' => $this->getQuotes(),
                 'payments' => array_merge($this->getPayments(), $this->getCredits()),
                 'documents' => $this->getDocuments(),
-                'company_gateways' => $this->getCompanyGateways(),
-                'client_gateway_tokens' => $this->getClientGatewayTokens(),
                 'expense_categories' => $this->getExpenseCategories(),
                 'task_statuses' => $this->getTaskStatuses(),
                 'expenses' => $this->getExpenses(),
@@ -252,9 +254,11 @@ class StepsController extends BaseController
 
             $file = storage_path("migrations/{$fileName}.zip");
 
+            ksort($localMigrationData);
+
             $zip = new \ZipArchive();
             $zip->open($file, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
-            $zip->addFromString('migration.json', json_encode(ksort($localMigrationData), JSON_PRETTY_PRINT));
+            $zip->addFromString('migration.json', json_encode($localMigrationData, JSON_PRETTY_PRINT));
             $zip->close();
 
             $localMigrationData['file'] = $file;
