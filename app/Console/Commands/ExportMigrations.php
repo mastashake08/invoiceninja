@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Traits\GenerateMigrationResources;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class ExportMigrations extends Command
 {
@@ -17,7 +18,7 @@ class ExportMigrations extends Command
      *
      * @var string
      */
-    protected $signature = 'migrations:export {--user=} {--random=}';
+    protected $signature = 'migrations:export {--user=} {--email=} {--random=}';
 
     /**
      * The console command description.
@@ -46,8 +47,36 @@ class ExportMigrations extends Command
         $this->info('Note: Migrations will be stored inside of (storage/migrations) folder.');
 
         if($this->option('user')) {
-            $record = User::findOrFail($this->option('user'));
-            return $this->export($record);
+            $record = User::on(DB_NINJA_1)->find($this->option('user'));
+
+            if($record)
+                return $this->export($record);
+
+            $record = User::on(DB_NINJA_2)->find($this->option('user'));
+
+            if($record)
+                return $this->export($record);
+
+            
+            $this->info('I could not find that user - sorry');
+            return;
+        }
+
+
+        if($this->option('email')) {
+            $record = User::on(DB_NINJA_1)->where('email', $this->option('email'))->first();
+
+            if($record)
+                return $this->export($record);
+
+            $record = User::on(DB_NINJA_2)->where('email', $this->option('email'))->first();
+
+            if($record)
+                return $this->export($record);
+
+            
+            $this->info('I could not find that user by email - sorry');
+            return;
         }
 
         if($this->option('random')){
@@ -101,8 +130,10 @@ class ExportMigrations extends Command
             'expenses' => $this->getExpenses(),
             'tasks' => $this->getTasks(),
             'documents' => $this->getDocuments(),
+            'ninja_tokens' => $this->getNinjaToken(),
         ];
 
+        Storage::makeDirectory('migrations');
         $file = storage_path("migrations/{$fileName}.zip");
 
         $zip = new \ZipArchive();

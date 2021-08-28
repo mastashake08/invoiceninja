@@ -238,25 +238,71 @@
 			</div>
 		</div>
 
-		@if(Auth::user()->eligibleForMigration())
-			<div class="panel panel-default">
-				<div class="panel-heading">
-					<h3 class="panel-title">{!! trans('texts.migrate_to_next_version') !!}</h3>
-				</div>
-				<div class="panel-body">
-					<div class="form-group">
-						<label for="modules" class="control-label col-lg-4 col-sm-4"></label>
-						<div class="col-lg-8 col-sm-8">
-							<div class="help-block">{{ trans('texts.migrate_intro_text')}}</div><br/>
+		<div class="panel panel-default">
+			<div class="panel-heading">
+				<h3 class="panel-title">{!! trans('texts.migrate_to_next_version') !!}</h3>
+			</div>
+			<div class="panel-body">
+				<div class="form-group">
+					<label for="modules" class="control-label col-lg-4 col-sm-4"></label>
+					<div class="col-lg-8 col-sm-8">
+						<div class="help-block">{{ trans('texts.migrate_intro_text')}}</div><br/>
+						<div class="help-block">
+							Watch these YouTube videos to see some of the many new features added:<br/>
+							• <a href="https://www.youtube.com/watch?v=h_IMJLmVmuY&ab_channel=InvoiceNinja" target="_blank">What's new in Invoice Ninja v5</a><br/>
+							• <a href="https://www.youtube.com/watch?v=NgwCxIMry54&ab_channel=InvoiceNinja" target="_blank">More new features in v5</a><br/>
+						</div><br/>
+						@if(Auth::user()->eligibleForMigration())
 							<a class="btn btn-primary btn-lg"
-						   		href="{{ url('/migration/start') }}">{!! trans('texts.start_migration') !!}</a>
-						</div>
+								href="{{ url('/migration/start') }}">{!! trans('texts.start_migration') !!}</a>
+						@else
+							{{ trans('texts.not_allowed') }}
+						@endif
+						<br/>
+						<a href="https://invoiceninja.github.io/docs/migration/" target="_blank">{{ trans('texts.learn_more') }}</a><br/>
 					</div>
 				</div>
 			</div>
-		@endif
-
+		</div>
 		{!! Former::close() !!}
+
+		<div class="panel panel-default">
+			<div class="panel-heading">
+				<h3 class="panel-title">Forward customers to V5</h3>
+			</div>
+			<div class="panel-body">
+				<form action="{{ url('/migration/forward') }}" method="post" id="forward-form">
+        		{{ csrf_field() }}
+        		<div class="form-group">
+					<label for="modules" class="control-label col-lg-4 col-sm-4"></label>
+					<div class="col-lg-8 col-sm-8">
+						<div class="help-block">
+							Once you are ready to forward your customers, enter your client portal URL for V5 here:<br/><br/>
+							<b>Please note once enabled. Your V4 account will become disabled. This means that your recurring invoices and any reminders will no longer fire from V4.</b> <br/><br/>To renable your V4 installation simply set the forwarding url to a blank/empty value.
+						</div><br/>
+					</div>
+        		</div>
+				<div class="form-group">                    
+                    <label for="url"  class="control-label col-lg-4 col-sm-4 text-right">{!! trans('texts.url') !!}</label>
+                    <div class="col-lg-8 col-sm-8">
+                    <input type="text" name="url" placeholder="https://subdomain.invoicing.co" class="form form-control" value="{{ $account->account_email_settings->forward_url_for_v5}}">
+		        	@if($errors->has('url')) 
+		                <div class="col-sm-5">
+		                    @foreach ($errors->get('url') as $message)
+		                        <span class="help-block">
+		                            <span class="glyphicon glyphicon-warning-sign"></span> 
+		                            {{ $message }}
+		                        </span>
+		                    @endforeach
+		                </div>
+		            @endif
+		        	<br/>
+		        		<button form="forward-form" class="btn btn-primary btn-lg">{!! trans('texts.submit') !!}</button>
+                	</div>
+				</div>
+				</form>
+			</div>
+		</div>
 
 		@if (! Auth::user()->account->isNinjaOrLicenseAccount())
 			<div class="panel panel-default">

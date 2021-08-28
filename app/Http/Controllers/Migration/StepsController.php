@@ -2,18 +2,23 @@
 
 namespace App\Http\Controllers\Migration;
 
-use App\Libraries\Utils;
-use App\Traits\GenerateMigrationResources;
-use Illuminate\Support\Facades\Auth;
-use App\Services\Migration\AuthService;
 use App\Http\Controllers\BaseController;
-use App\Services\Migration\CompanyService;
 use App\Http\Requests\MigrationAuthRequest;
-use App\Http\Requests\MigrationTypeRequest;
-use App\Services\Migration\CompleteService;
-use App\Http\Requests\MigrationEndpointRequest;
 use App\Http\Requests\MigrationCompaniesRequest;
+use App\Http\Requests\MigrationEndpointRequest;
+use App\Http\Requests\MigrationForwardRequest;
+use App\Http\Requests\MigrationTypeRequest;
+use App\Jobs\HostedMigration;
+use App\Libraries\Utils;
 use App\Models\Account;
+use App\Services\Migration\AuthService;
+use App\Services\Migration\CompanyService;
+use App\Services\Migration\CompleteService;
+use App\Traits\GenerateMigrationResources;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Validator;
 
 class StepsController extends BaseController
 {
@@ -44,6 +49,17 @@ class StepsController extends BaseController
      */
     public function start()
     {
+        if(Utils::isNinja()){
+            
+            session()->put('MIGRATION_ENDPOINT', 'https://v5-app1.invoicing.co');
+        //    session()->put('MIGRATION_ENDPOINT', 'http://ninja.test:8000');
+            session()->put('MIGRATION_ACCOUNT_TOKEN','');
+            session()->put('MIGRAITON_API_SECRET', null);
+
+            return $this->companies();
+
+        }
+
         return view('migration.start');
     }
 
@@ -64,10 +80,20 @@ class StepsController extends BaseController
     {
         session()->put('MIGRATION_TYPE', $request->option);
 
-        if ($request->option == 0) {
+        if ($request->option == 0 || $request->option == '0') {
+
             return redirect(
-                url('/migration/endpoint')
+                url('/migration/companies?hosted=true')
             );
+
+            //old
+            // return redirect(
+            //     url('/migration/auth')
+            // );
+
+            // return redirect(
+            //     url('/migration/endpoint')
+            // );
         }
 
         return redirect(
@@ -75,8 +101,39 @@ class StepsController extends BaseController
         );
     }
 
+    public function forwardUrl(Request $request)
+    {
+
+        $rules = [
+            'url' => 'nullable|url',
+        ];
+
+        $validator = Validator::make($request->all(), $rules);
+
+        if ($validator->fails()) {
+            return back()
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        $account_settings = \Auth::user()->account->account_email_settings;
+
+        if(strlen($request->input('url')) == 0) {
+            $account_settings->is_disabled = false;
+        }
+        else {
+            $account_settings->is_disabled = true;
+        }
+
+        $account_settings->forward_url_for_v5 = rtrim($request->input('url'),'/');
+        $account_settings->save();
+
+        return back();
+    }
+
     public function endpoint()
     {
+
         if ($this->shouldGoBack('endpoint')) {
             return redirect(
                 url($this->access['endpoint']['redirect'])
@@ -94,7 +151,7 @@ class StepsController extends BaseController
             );
         }
 
-        session()->put('MIGRATION_ENDPOINT', $request->endpoint);
+        session()->put('MIGRATION_ENDPOINT', rtrim($request->endpoint,'/'));
 
         return redirect(
             url('/migration/auth')
@@ -167,15 +224,39 @@ class StepsController extends BaseController
                 url($this->access['companies']['redirect'])
             );
         }
+        $bool = true;
 
-        $migrationData = $this->generateMigrationData($request->all());
+        if(Utils::isNinja())
+        {
 
-        $completeService = (new CompleteService(session('MIGRATION_ACCOUNT_TOKEN')))
-            ->data($migrationData)
-            ->endpoint(session('MIGRATION_ENDPOINT'))
-            ->start();
+            $this->dispatch(new HostedMigration(auth()->user(), $request->all(), config('database.default')));
+            
+            return view('migration.completed');
+   
+        }
 
-        return view('migration.completed');
+        $completeService = (new CompleteService(session('MIGRATION_ACCOUNT_TOKEN')));
+
+        try {
+            $migrationData = $this->generateMigrationData($request->all());
+
+            
+                $completeService->data($migrationData)
+                ->endpoint(session('MIGRATION_ENDPOINT'))
+                ->start();
+        }
+        catch(\Exception $e){
+            info($e->getMessage());
+            return view('migration.completed', ['customMessage' => $e->getMessage()]);
+        }
+     
+        
+            if ($completeService->isSuccessful()) {
+                return view('migration.completed');
+            }
+
+            return view('migration.completed', ['customMessage' => $completeService->getErrors()[0]]);
+        
     }
 
     public function completed()
@@ -211,6 +292,8 @@ class StepsController extends BaseController
      */
     public function generateMigrationData(array $data): array
     {
+        set_time_limit(0);
+
         $migrationData = [];
 
         foreach ($data['companies'] as $company) {
@@ -248,11 +331,15 @@ class StepsController extends BaseController
                 'expenses' => $this->getExpenses(),
                 'tasks' => $this->getTasks(),
                 'documents' => $this->getDocuments(),
+                'ninja_tokens' => $this->getNinjaToken(),
             ];
 
-            $localMigrationData['force'] = array_key_exists('force', $company) ? true : false;
+            $localMigrationData['force'] = array_key_exists('force', $company);
 
-            $file = storage_path("migrations/{$fileName}.zip");
+            Storage::makeDirectory('migrations');
+            $file = Storage::path("migrations/{$fileName}.zip");
+
+            //$file = storage_path("migrations/{$fileName}.zip");
 
             ksort($localMigrationData);
 

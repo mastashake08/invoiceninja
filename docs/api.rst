@@ -1,7 +1,9 @@
-API
-===
+API (VERSION 4)
+===============
 
-Invoice Ninja provides a RESTful API, `click here <https://app.invoiceninja.com/api-docs#/>`_ to see the full list of methods available.
+**Please note this is for the V4 API, if you are looking for V5 API documentation please go here** https://app.swaggerhub.com/apis/invoiceninja/invoiceninja
+
+Invoice Ninja provides a RESTful API,
 
 To access the API you first need to create a token using the "API Tokens” page under "Advanced Settings”.
 

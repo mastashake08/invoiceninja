@@ -2,10 +2,12 @@
 
 namespace App\Traits;
 
+use App\Libraries\Utils;
 use App\Models\AccountGateway;
 use App\Models\AccountGatewaySettings;
 use App\Models\AccountGatewayToken;
 use App\Models\AccountToken;
+use App\Models\Client;
 use App\Models\Contact;
 use App\Models\Credit;
 use App\Models\Document;
@@ -70,11 +72,21 @@ trait GenerateMigrationResources
 
     protected function getCompany()
     {
-info("get company");
+        info("get company");
+
+        $financial_year_start = null;
+        if($this->account->financial_year_start)
+        {
+            //2000-02-01 format
+            $exploded_date = explode("-", $this->account->financial_year_start);
+
+            $financial_year_start = (int)$exploded_date[1];
+
+        }
 
         return [
             'first_day_of_week' => $this->account->start_of_week,
-            'first_month_of_year' => $this->account->financial_year_start,
+            'first_month_of_year' => $financial_year_start,
             'version' => NINJA_VERSION,
             'referral_code' => $this->account->referral_code ?: '',
             'account_id' => $this->account->id,
@@ -98,12 +110,46 @@ info("get company");
         ];
     }
 
+    /**
+     *     define('TOKEN_BILLING_DISABLED', 1);
+     *     define('TOKEN_BILLING_OPT_IN', 2);
+     *     define('TOKEN_BILLING_OPT_OUT', 3);
+     *     define('TOKEN_BILLING_ALWAYS', 4);
+     *
+     *     off,always,optin,optout
+     */
+    private function transformAutoBill($token_billing_id)
+    {
+
+        switch ($token_billing_id) {
+            case TOKEN_BILLING_DISABLED:
+                return 'off';
+            case TOKEN_BILLING_OPT_IN:
+                return 'optin';
+            case TOKEN_BILLING_OPT_OUT:
+                return 'optout';
+            case TOKEN_BILLING_ALWAYS:
+                return 'always';
+            
+            default:
+                return 'off';
+        }
+        
+    }
+
     public function getCompanySettings()
     {
         info("get co settings");
 
+        $timezone_id = $this->account->timezone_id ? $this->account->timezone_id : 15;
+
+        if($timezone_id > 57)
+            $timezone_id = (string)($timezone_id - 1);
+
         return [
-            'timezone_id' => $this->account->timezone_id ? (string) $this->account->timezone_id : '15',
+            'auto_bill' => $this->transformAutoBill($this->account->token_billing_id),
+            'payment_terms' => $this->account->payment_terms ? (string) $this->account->payment_terms : '',
+            'timezone_id' => $timezone_id,
             'date_format_id' => $this->account->date_format_id ? (string) $this->account->date_format_id : '1',
             'currency_id' => $this->account->currency_id ? (string) $this->account->currency_id : '1',
             'name' => $this->account->name ?: trans('texts.untitled'),
@@ -132,6 +178,7 @@ info("get company");
             'font_size' => $this->account->font_size ?: 9,
             'invoice_labels' => $this->account->invoice_labels ?: '',
             'military_time' => $this->account->military_time ? (bool) $this->account->military_time : false,
+            'invoice_number_counter' => $this->account->invoice_number_counter ?: 0,
             'invoice_number_pattern' => $this->account->invoice_number_pattern ?: '',
             'quote_number_pattern' => $this->account->quote_number_pattern ?: '',
             'quote_terms' => $this->account->quote_terms ?: '',
@@ -140,7 +187,7 @@ info("get company");
             'all_pages_footer' => $this->account->all_pages_footer ? (bool) $this->account->all_pages_footer : true,
             'all_pages_header' => $this->account->all_pages_header ? (bool) $this->account->all_pages_header : true,
             'show_currency_code' => $this->account->show_currency_code ? (bool) $this->account->show_currency_code : false,
-            'enable_client_portal_password' => $this->account->enable_portal_password ? (bool) $this->account->enable_portal_password : true,
+            'enable_client_portal_password' => $this->account->enable_portal_password ? (bool) $this->account->enable_portal_password : false,
             'send_portal_password' => $this->account->send_portal_password ? (bool) $this->account->send_portal_password : false,
             'recurring_number_prefix' => $this->account->recurring_invoice_number_prefix ? $this->account->recurring_invoice_number_prefix : 'R',
             'enable_client_portal' => $this->account->enable_client_portal ? (bool) $this->account->enable_client_portal : false,
@@ -159,8 +206,9 @@ info("get company");
             'payment_number_pattern' => '',
             'payment_number_counter' => 0,
             'payment_terms' => $this->account->payment_terms ?: '',
-            'reset_counter_frequency_id' => $this->account->reset_counter_frequency_id ? (string) $this->account->reset_counter_frequency_id : '0',
-            'payment_type_id' => $this->account->payment_type_id ? (string) $this->account->payment_type_id : '1',
+            'reset_counter_frequency_id' => $this->account->reset_counter_frequency_id ? (string) $this->transformFrequencyId
+            ($this->account->reset_counter_frequency_id) : '0',
+            'payment_type_id' => $this->account->payment_type_id ? (string) $this->transformPaymentType($this->account->payment_type_id) : '1',
             'reset_counter_date' => $this->account->reset_counter_date ?: '',
             'tax_name1' => $this->account->tax_name1 ?: '',
             'tax_rate1' => $this->account->tax_rate1 ?: 0,
@@ -179,7 +227,77 @@ info("get company");
             'auto_archive_quote' => $this->account->auto_archive_quote ? (bool) $this->account->auto_archive_quote : false,
             'auto_email_invoice' => $this->account->auto_email_invoice ? (bool) $this->account->auto_email_invoice : false,
             'counter_padding' => $this->account->invoice_number_padding ?: 4,
+            'reply_to_email' => $this->account->account_email_settings->reply_to_email ?: '',
+            'bcc_email' => $this->account->account_email_settings->bcc_email ?: '',
+            'email_subject_invoice' => $this->account->account_email_settings->email_subject_invoice ?: '',
+            'email_subject_quote' => $this->account->account_email_settings->email_subject_quote ?: '',
+            'email_subject_payment' => $this->account->account_email_settings->email_subject_payment ?: '',
+            'email_template_invoice' => $this->account->account_email_settings->email_template_invoice ?: '',
+            'email_template_quote' => $this->account->account_email_settings->email_template_quote ?: '',
+            'email_template_payment' => $this->account->account_email_settings->email_template_payment ?: '',
+            'email_subject_reminder1' => $this->account->account_email_settings->email_subject_reminder1 ?: '',
+            'email_subject_reminder2' => $this->account->account_email_settings->email_subject_reminder2 ?: '',
+            'email_subject_reminder3' => $this->account->account_email_settings->email_subject_reminder3 ?: '',
+            'email_subject_reminder_endless' => $this->account->account_email_settings->email_subject_reminder4 ?: '',
+            'email_template_reminder1' => $this->account->account_email_settings->email_template_reminder1 ?: '',
+            'email_template_reminder2' => $this->account->account_email_settings->email_template_reminder2 ?: '',
+            'email_template_reminder3' => $this->account->account_email_settings->email_template_reminder3 ?: '',
+            'email_template_reminder_endless' => $this->account->account_email_settings->email_template_reminder4 ?: '',
+            'late_fee_amount1' => $this->account->account_email_settings->late_fee1_amount ?: 0,
+            'late_fee_amount2' => $this->account->account_email_settings->late_fee2_amount ?: 0,
+            'late_fee_amount3' => $this->account->account_email_settings->late_fee3_amount ?: 0,
+            'late_fee_percent1' => $this->account->account_email_settings->late_fee1_percent ?: 0,
+            'late_fee_percent2' => $this->account->account_email_settings->late_fee2_percent ?: 0,
+            'late_fee_percent3' => $this->account->account_email_settings->late_fee3_percent ?: 0,
+            'enable_reminder1' => $this->account->enable_reminder1 ? true : false,
+            'enable_reminder2' => $this->account->enable_reminder2 ? true : false,
+            'enable_reminder3' => $this->account->enable_reminder3 ? true : false,
+            'enable_reminder_endless' => $this->account->enable_reminder4 ? true : false,
+            'num_days_reminder1' => $this->account->num_days_reminder1 ?: 0,
+            'num_days_reminder2' => $this->account->num_days_reminder2 ?: 0,
+            'num_days_reminder3' => $this->account->num_days_reminder3 ?: 0,
+            'schedule_reminder1' => $this->buildReminderString($this->account->direction_reminder1, $this->account->field_reminder1),
+            'schedule_reminder2' => $this->buildReminderString($this->account->direction_reminder2, $this->account->field_reminder2),
+            'schedule_reminder3' => $this->buildReminderString($this->account->direction_reminder3, $this->account->field_reminder3),
+            'endless_reminder_frequency_id' => $this->account->account_email_settings->reset_counter_frequency_id ? $this->transformFrequencyId($this->account->account_email_settings->reset_counter_frequency_id) : 0,
+            'email_signature' => $this->account->email_footer ?: '',
+            'email_style' => $this->getEmailStyle($this->account->email_design_id),
+            'custom_message_dashboard' => $this->account->customMessage('dashboard'),
+            'custom_message_unpaid_invoice' => $this->account->customMessage('unpaid_invoice'),
+            'custom_message_paid_invoice' => $this->account->customMessage('paid_invoice'),
+            'custom_message_unapproved_quote' => $this->account->customMessage('unapproved_quote'),
         ];
+    }
+
+    private function getEmailStyle($id){
+
+        switch ($id) {
+            case 1:
+                return 'plain';
+                break;
+            case 2:
+                return 'light';
+                break;
+            case 3:
+                return 'dark';
+                break;
+
+            default:
+                return 'light';
+
+                break;
+        }
+
+    }
+
+    private function buildReminderString($direction, $field)
+    {
+
+        $direction_string = $direction == 1 ? "after_" : "before_";
+        $field_string = $field == 1 ? "due_date" : "invoice_date";
+
+        return $direction_string.$field_string;
+
     }
 
     public function getTaxRates()
@@ -261,23 +379,23 @@ info("get company");
 
     private function getClientSettings($client)
     {
-        info("get client settings");
-
 
         $settings = new \stdClass();
         $settings->currency_id = $client->currency_id ? (string) $client->currency_id : (string) $client->account->currency_id;
 
-        if ($client->language_id) {
+        if($client->task_rate && $client->task_rate > 0)
+            $settings->default_task_rate = (float)$client->task_rate;
+
+        if ($client->language_id) 
             $settings->language_id = (string)$client->language_id;
-        }
+        
 
         return $settings;
     }
 
     protected function getClientContacts($client)
     {
-        info("get client contacts");
-
+     
         $contacts = Contact::where('client_id', $client->id)->withTrashed()->get();
 
         $transformed = [];
@@ -297,7 +415,7 @@ info("get company");
                 'is_primary' => (bool)$contact->is_primary,
                 'send_email' => (bool)$contact->send_invoice,
                 'confirmed' => $contact->confirmation_token ? true : false,
-                'email_verified_at' => $contact->created_at->toDateTimeString(),
+                'email_verified_at' => $contact->created_at ? Carbon::parse($contact->created_at)->toDateTimeString() : null,
                 'last_login' => $contact->last_login,
                 'password' => $contact->password,
                 'remember_token' => $contact->remember_token,
@@ -309,6 +427,49 @@ info("get company");
         }
 
         return $transformed;
+    }
+
+    protected function getNinjaToken()
+    {
+        $transformed = [];
+
+        if(!Utils::isNinja())
+            return $transformed;
+        
+        $ninja_client = Client::where('public_id', $this->account->id)->first();
+
+        if(!$ninja_client)
+            return $transformed;
+
+        $agts = AccountGatewayToken::where('client_id', $ninja_client->id)->get();
+        $is_default = true;
+
+        foreach($agts as $agt) {
+
+            $payment_method = $agt->default_payment_method;
+
+            if(!$payment_method)
+                continue;
+
+            $contact = Contact::where('id', $payment_method->contact_id)->withTrashed()->first();
+
+            $transformed[] = [
+                'id' => $payment_method->id,
+                'company_id' => $this->account->id,
+                'client_id' => $contact->client_id,
+                'token' => $payment_method->source_reference,
+                'company_gateway_id' => $agt->account_gateway_id,
+                'gateway_customer_reference' => $agt->token,
+                'gateway_type_id' => $payment_method->payment_type->gateway_type_id,
+                'is_default' => $is_default,
+                'meta' => $this->convertMeta($payment_method),
+                'client' => $contact->client->toArray(),
+                'contacts' => $contact->client->contacts->toArray(),
+            ];
+        }
+
+        return $transformed;
+
     }
 
     protected function getProducts()
@@ -329,6 +490,7 @@ info("get company");
                 'custom_value2' => $product->custom_value2 ?: '',
                 'product_key' => $product->product_key ?: '',
                 'notes' => $product->notes ?: '',
+                'price' => $product->cost ?: 0,
                 'cost' => $product->cost ?: 0,
                 'quantity' => $product->qty ?: 0,
                 'tax_name1' => $product->tax_name1,
@@ -366,7 +528,7 @@ info("get company");
                 'referral_code' => $user->referral_code,
                 'oauth_user_id' => $user->oauth_user_id,
                 'oauth_provider_id' => $user->oauth_provider_id,
-                'google_2fa_secret' => $user->google_2fa_secret,
+                'google_2fa_secret' => '',
                 'accepted_terms_version' => $user->accepted_terms_version,
                 'password' => $user->password,
                 'remember_token' => $user->remember_token,
@@ -470,13 +632,19 @@ info("get company");
                 'footer' => $invoice->invoice_footer ?: '',
                 'public_notes' => $invoice->public_notes ?: '',
                 'private_notes' => $invoice->private_notes ?: '',
+                // 'has_tasks' => $invoice->has_tasks,
+                // 'has_expenses' => $invoice->has_expenses,
                 'terms' => $invoice->terms ?: '',
                 'tax_name1' => $invoice->tax_name1,
                 'tax_name2' => $invoice->tax_name2,
                 'tax_rate1' => $invoice->tax_rate1,
                 'tax_rate2' => $invoice->tax_rate2,
-                'custom_value1' => $invoice->custom_value1 ?: '',
-                'custom_value2' => $invoice->custom_value2 ?: '',
+                'custom_surcharge1' => $invoice->custom_value1 ?: '',
+                'custom_surcharge2' => $invoice->custom_value2 ?: '',
+                'custom_value1' => $invoice->custom_text_value1 ?: '',
+                'custom_value2' => $invoice->custom_text_value2 ?: '',
+                'custom_surcharge_tax1' => $invoice->custom_taxes1 ?: '',
+                'custom_surcharge_tax2' => $invoice->custom_taxes2 ?: '',
                 'next_send_date' => null,
                 'amount' => $invoice->amount ?: 0,
                 'balance' => $invoice->balance ?: 0,
@@ -487,6 +655,7 @@ info("get company");
                 'updated_at' => $invoice->updated_at ? Carbon::parse($invoice->updated_at)->toDateString() : null,
                 'deleted_at' => $invoice->deleted_at ? Carbon::parse($invoice->deleted_at)->toDateString() : null,
                 'invitations' => $this->getResourceInvitations($invoice->invitations, 'invoice_id'),
+                'auto_bill_enabled' => $invoice->auto_bill,
             ];
         }
 
@@ -497,8 +666,18 @@ info("get company");
     private function getDesignId($design_id)
     {
         if($design_id >= 11)
+            return 2;
+        elseif($design_id == 1)
+            return 2;
+        elseif($design_id == 2)
+            return 3;
+        elseif($design_id == 3)
+            return 4;
+        elseif($design_id == 4)
             return 1;
-
+        elseif($design_id == 10)
+            return 2;
+        
         return $design_id;
     }
 
@@ -555,10 +734,11 @@ info("get company");
                 'updated_at' => $invoice->updated_at ? Carbon::parse($invoice->updated_at)->toDateString() : null,
                 'deleted_at' => $invoice->deleted_at ? Carbon::parse($invoice->deleted_at)->toDateString() : null,
                 'next_send_date' => $this->getNextSendDateForMigration($invoice),
-                'frequency_id' => $this->transformFrequencyId($invoice),
+                'frequency_id' => $this->transformFrequencyId($invoice->frequency_id),
                 'due_date_days' => $this->transformDueDate($invoice),
                 'remaining_cycles' => $this->getRemainingCycles($invoice),
                 'invitations' => $this->getResourceInvitations($invoice->invitations, 'recurring_invoice_id'),
+                'auto_bill_enabled' => $invoice->auto_bill,
             ];
         }
 
@@ -679,9 +859,9 @@ info("get company");
     // const FREQUENCY_THREE_YEARS = 12;
 
 
-    private function transformFrequencyId($invoice)
+    private function transformFrequencyId($frequency_id)
     {
-        switch ($invoice->frequency_id) {
+        switch ($frequency_id) {
             case 1:
                 return 2;
                 break;
@@ -747,15 +927,24 @@ info("get company");
         if($invoice->end_date < now())
             return 4;
 
-    }
+        return 1;
 
+    }
+/**
+    const STATUS_DRAFT = 1;
+    const STATUS_SENT = 2;
+    const STATUS_APPROVED = 3;
+    const STATUS_CONVERTED = 4;
+    const STATUS_EXPIRED = -1;
+ */
     private function transformQuoteStatusId($quote)
     {
-        if(!$quote->is_public)
-            return 1;
 
         if($quote->quote_invoice_id)
             return 4;
+
+        if(!$quote->is_public)
+            return 1;
 
         switch ($quote->invoice_status_id) {
             case 1:
@@ -801,7 +990,7 @@ info("get company");
 
         switch ($status) {
             case 1:
-                return 2;
+                return 1;
                 break;
             case 2:
                 return 2;
@@ -826,7 +1015,7 @@ info("get company");
 
     public function getResourceInvitations($items, $resourceKeyId)
     {
-        info("get resource {$resourceKeyId} invitations");
+        // info("get resource {$resourceKeyId} invitations");
 
         $transformed = [];
 
@@ -840,7 +1029,7 @@ info("get company");
                 'key' => $invitation->invitation_key,
                 'transaction_reference' => $invitation->transaction_reference,
                 'message_id' => $invitation->message_id,
-                'email_error' => $invitation->email_error,
+                'email_error' => $invitation->email_error ?: '',
                 'signature_base64' => $invitation->signature_base64,
                 'signature_date' => $invitation->signature_date,
                 'sent_date' => $invitation->sent_date,
@@ -849,6 +1038,7 @@ info("get company");
                 'created_at' => $invitation->created_at ? Carbon::parse($invitation->created_at)->toDateString() : null,
                 'updated_at' => $invitation->updated_at ? Carbon::parse($invitation->updated_at)->toDateString() : null,
                 'deleted_at' => $invitation->deleted_at ? Carbon::parse($invitation->deleted_at)->toDateString() : null,
+                'email_status' => '',
             ];
         }
 
@@ -898,7 +1088,7 @@ info("get company");
 
     public function getInvoiceItems($items)
     {
-        info("get invoice items");
+        // info("get invoice items");
 
         $transformed = [];
 
@@ -965,8 +1155,13 @@ info("get company");
                 'tax_name2' => $quote->tax_name2,
                 'tax_rate1' => $quote->tax_rate1,
                 'tax_rate2' => $quote->tax_rate2,
-                'custom_value1' => $quote->custom_value1 ?: '',
-                'custom_value2' => $quote->custom_value2 ?: '',
+                'invoice_id' => $quote->quote_invoice_id,
+                'custom_surcharge1' => $quote->custom_value1 ?: '',
+                'custom_surcharge2' => $quote->custom_value2 ?: '',
+                'custom_value1' => $quote->custom_text_value1 ?: '',
+                'custom_value2' => $quote->custom_text_value2 ?: '',
+                'custom_surcharge_tax1' => $quote->custom_taxes1 ?: '',
+                'custom_surcharge_tax2' => $quote->custom_taxes2 ?: '',
                 'next_send_date' => null,
                 'amount' => $quote->amount ?: 0,
                 'balance' => $quote->balance ?: 0,
@@ -1083,7 +1278,7 @@ info("get company");
     {
         switch ($payment_type_id) {
             case PAYMENT_TYPE_CREDIT:
-                return 1;
+                return 32;
             case PAYMENT_TYPE_ACH:
                 return 4;
             case PAYMENT_TYPE_VISA:
@@ -1104,6 +1299,8 @@ info("get company");
                 return 12;
             case PAYMENT_TYPE_PAYPAL:
                 return 13;
+            case 16:
+                return 15;    
             case PAYMENT_TYPE_CARTE_BLANCHE:
                 return 16;
             case PAYMENT_TYPE_UNIONPAY:
@@ -1217,12 +1414,9 @@ info("get company");
 
             $fees_and_limits = $this->transformFeesAndLimits($gateway_type);
 
-info("generated fees and limits = ");
-info(print_r($fees_and_limits,1));
 
             $translated_gateway_type = $this->translateGatewayTypeId($gateway_type);
 
-info("translated gateway_type = {$translated_gateway_type}");
 
             $fees->{$translated_gateway_type} = $fees_and_limits;
         }
@@ -1236,7 +1430,6 @@ info("translated gateway_type = {$translated_gateway_type}");
 
         $account_gateways = AccountGateway::where('account_id', $this->account->id)->withTrashed()->get();
 
-
         $transformed = [];
 
         foreach ($account_gateways as $account_gateway) {
@@ -1245,6 +1438,17 @@ info("translated gateway_type = {$translated_gateway_type}");
                 continue;
 
             $gateway_types = $account_gateway->paymentDriver()->gatewayTypes();
+
+            $config = 'If you see this message - we were not able to decrypt your config';
+
+            try{
+                $config = Crypt::decrypt($account_gateway->config);
+            }
+            catch(\Exception $e){
+            
+                info($config);
+
+            }
 
             // foreach ($gateway_types as $gateway_type_id) {
                 $transformed[] = [
@@ -1257,12 +1461,15 @@ info("translated gateway_type = {$translated_gateway_type}");
                     'require_billing_address' => $account_gateway->show_billing_address,
                     'require_shipping_address' => $account_gateway->show_shipping_address,
                     'update_details' => $account_gateway->update_details,
-                    'config' => Crypt::decrypt($account_gateway->config),
+                    'config' => $config,
                     'fees_and_limits' => $this->buildFeesAndLimits($gateway_types),
                     'custom_value1' => '',
                     'custom_value2' => '',
                     'custom_value3' => '',
                     'custom_value4' => '',
+                    'created_at' => $account_gateway->created_at ? Carbon::parse($account_gateway->created_at)->toDateString() : null,
+                    'updated_at' => $account_gateway->updated_at ? Carbon::parse($account_gateway->updated_at)->toDateString() : null,
+                    'deleted_at' => $account_gateway->deleted_at ? Carbon::parse($account_gateway->deleted_at)->toDateString() : null,
                 ];
             // }
         }
@@ -1432,6 +1639,9 @@ info("translated gateway_type = {$translated_gateway_type}");
             $contact = Contact::where('id', $payment_method->contact_id)->withTrashed()->first();
             $agt = AccountGatewayToken::where('id', $payment_method->account_gateway_token_id)->withTrashed()->first();
 
+            if(!$contact && !$agt)
+                continue;
+
             $transformed[] = [
                 'id' => $payment_method->id,
                 'company_id' => $this->account->id,
@@ -1582,7 +1792,7 @@ info("translated gateway_type = {$translated_gateway_type}");
                 'invoice_documents' => $expense->invoice_documents,
                 'invoice_id' => $expense->invoice_id,
                 'payment_date' =>  $expense->payment_date,
-                'payment_type_id' =>  $expense->payment_type_id,
+                'payment_type_id' =>  $this->transformPaymentType($expense->payment_type_id),
                 'private_notes' =>  $expense->private_notes,
                 'public_notes' =>  $expense->public_notes,
                 'recurring_expense_id' =>  $expense->recurring_expense_id,
@@ -1797,7 +2007,7 @@ info("translated gateway_type = {$translated_gateway_type}");
         $meta->exp_month = (string)$exp_month;
         $meta->exp_year = (string)$exp_year;
         $meta->brand = (string)$payment_method->payment_type->name;
-        $meta->last4 = (string)str_replace(',', '', ($payment_method->expiration));
+        $meta->last4 = (string)str_replace(',', '', ($payment_method->last4));
         $meta->type = $payment_method->payment_type->gateway_type_id;
 
         return $meta;
@@ -1816,8 +2026,8 @@ info("translated gateway_type = {$translated_gateway_type}");
         }
 
         $fees_and_limits = new \stdClass();
-        $fees_and_limits->min_limit = $ags->min_limit;
-        $fees_and_limits->max_limit = $ags->max_limit;
+        $fees_and_limits->min_limit = $ags->min_limit ?: -1;
+        $fees_and_limits->max_limit = $ags->max_limit ?: -1;
         $fees_and_limits->fee_amount = $ags->fee_amount;
         $fees_and_limits->fee_percent = $ags->fee_percent;
         $fees_and_limits->fee_tax_name1 = $ags->tax_name1;
