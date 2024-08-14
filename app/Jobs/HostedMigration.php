@@ -28,6 +28,10 @@ class HostedMigration extends Job
 
     private $forced;
 
+    public $tries = 1;
+
+    public $timeout = 0;
+
     public function __construct(User $user, array $data, $db, $forced = false)
     {
         $this->user = $user;
@@ -54,7 +58,7 @@ class HostedMigration extends Job
 
         $completeService->data($migrationData)
         ->endpoint('https://v5-app1.invoicing.co')
-        // ->endpoint('http://ninja.test:8000')
+//         ->endpoint('http://devhosted.test:8000')
         ->start();
 
     }
@@ -62,7 +66,7 @@ class HostedMigration extends Job
     private function getToken()
     {
         $url = 'https://invoicing.co/api/v1/get_migration_account';
-        // $url = 'http://ninja.test:8000/api/v1/get_migration_account';
+        // $url = 'http://devhosted.test:8000/api/v1/get_migration_account';
 
         $headers = [
             'X-API-HOSTED-SECRET' => $this->v4_secret,
@@ -98,26 +102,9 @@ class HostedMigration extends Job
             $this->migration_token = $message_body['token'];
 
         } else {
-            info(json_decode($response->getBody()->getContents()));
+            // info(json_decode($response->getBody()->getContents()));
 
         }
-
-
-        // $body = \Unirest\Request\Body::json($body);
-
-        // $response = Request::post($url, $headers, $body);
-
-        // if (in_array($response->code, [200])) {
-            
-        //     $data = $response->body;
-        //     info(print_r($data,1));
-        //     $this->migration_token = $data->token; 
-
-        // } else {
-        //     info("getting token failed");
-        //     info($response->raw_body);
-
-        // }   
 
         return $this;
     }
@@ -169,7 +156,7 @@ class HostedMigration extends Job
                 'recurring_expenses' => $this->getRecurringExpenses(),
                 'recurring_invoices' => $this->getRecurringInvoices(),
                 'quotes' => $this->getQuotes(),
-                'payments' => array_merge($this->getPayments(), $this->getCredits()),
+                'payments' => $this->getPayments(),
                 'documents' => $this->getDocuments(),
                 'expense_categories' => $this->getExpenseCategories(),
                 'task_statuses' => $this->getTaskStatuses(),
@@ -182,7 +169,7 @@ class HostedMigration extends Job
             $localMigrationData['force'] = array_key_exists('force', $company);
 
             Storage::makeDirectory('migrations');
-            $file = Storage::path("migrations/{$fileName}.zip");
+            $file = Storage::path("app/migrations/{$fileName}.zip");
 
             //$file = storage_path("migrations/{$fileName}.zip");
 

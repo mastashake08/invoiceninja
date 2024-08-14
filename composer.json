@@ -43,13 +43,14 @@
         "digitickets/omnipay-gocardlessv2": "dev-payment-fix",
         "digitickets/omnipay-realex": "~5.0",
         "doctrine/dbal": "2.6.x",
-        "dompdf/dompdf": "0.6.2",
+        "dompdf/dompdf": "^2.0",
         "ezyang/htmlpurifier": "~v4.7",
         "fotografde/omnipay-checkoutcom": "~2.0",
         "fruitcakestudio/omnipay-sisow": "~2.0",
         "fzaninotto/faker": "^1.5",
         "google/apiclient": "^2.0",
-        "guzzlehttp/guzzle": "^6.3",
+        "guzzlehttp/guzzle": "^6.5",
+        "guzzlehttp/psr7": "1.8.5",
         "intervention/image": "dev-master",
         "jaybizzle/laravel-crawler-detect": "1.*",
         "jlapp/swaggervel": "master-dev",
@@ -67,7 +68,7 @@
         "league/flysystem-rackspace": "~1.0",
         "league/fractal": "0.13.*",
         "lokielse/omnipay-alipay": "~1.4",
-        "maatwebsite/excel": "dev-carbon#8b17952",
+        "maatwebsite/excel": "dev-php-fix",
         "meebio/omnipay-creditcall": "dev-master",
         "meebio/omnipay-secure-trading": "dev-master",
         "mfauveau/omnipay-pacnet": "~2.0",
@@ -159,7 +160,10 @@
     "config": {
         "preferred-install": "dist",
         "sort-packages": true,
-        "optimize-autoloader": true
+        "optimize-autoloader": true,
+        "allow-plugins": {
+            "codeception/c3": true
+        }
     },
     "repositories": [
         {
@@ -204,7 +208,7 @@
         },
         {
             "type": "vcs",
-            "url": "https://github.com/tainmar/Laravel-Excel"
+            "url": "https://github.com/turbo124/Laravel-Excel"
         }
     ]
 }

@@ -102,6 +102,7 @@ trait GenerateMigrationResources
             'custom_surcharge_taxes1' => $this->account->custom_invoice_taxes1,
             'custom_surcharge_taxes2' => $this->account->custom_invoice_taxes2,
             'subdomain' => $this->account->subdomain,
+            'portal_mode' => 'subdomain',
             'size_id' => $this->account->size_id,
             'enable_modules' => $this->account->enabled_modules,
             'custom_fields' => $this->account->custom_fields,
@@ -148,6 +149,8 @@ trait GenerateMigrationResources
             $timezone_id = (string)($timezone_id - 1);
 
         return [
+            'entity_send_time' => 6,
+            'auto_bill_date' => $this->account->auto_bill_on_due_date ? 'on_due_date' : 'on_send_date',
             'auto_bill' => $this->transformAutoBill($this->account->token_billing_id),
             'payment_terms' => $this->account->payment_terms ? (string) $this->account->payment_terms : '',
             'timezone_id' => $timezone_id,
@@ -206,7 +209,6 @@ trait GenerateMigrationResources
             'client_number_pattern' => $this->account->client_number_pattern ?: '',
             'payment_number_pattern' => '',
             'payment_number_counter' => 0,
-            'payment_terms' => $this->account->payment_terms ?: '',
             'reset_counter_frequency_id' => $this->account->reset_counter_frequency_id ? (string) $this->transformFrequencyId
             ($this->account->reset_counter_frequency_id) : '0',
             'payment_type_id' => $this->account->payment_type_id ? (string) $this->transformPaymentType($this->account->payment_type_id) : '1',
@@ -351,7 +353,7 @@ trait GenerateMigrationResources
                 'city' => $client->city,
                 'state' => $client->state,
                 'postal_code' => $client->postal_code,
-                'country_id' => $client->country_id,
+                'country_id' => $client->country_id ? (string) $client->country_id : (string) $this->account->country_id,
                 'phone' => $client->work_phone,
                 'private_notes' => $client->private_notes,
                 'website' => $client->website,
@@ -441,13 +443,27 @@ trait GenerateMigrationResources
         if(!Utils::isNinja())
             return $transformed;
         
-        $ninja_client = Client::where('public_id', $this->account->id)->first();
+        $db = DB_NINJA_1;
+        $account_id = 20432;
+
+        if($this->account->id > 1000000){
+            $db = DB_NINJA_2;
+            $account_id = 1000002;
+        }
+
+        $ninja_client = Client::on($db)->where('public_id', $this->account->id)->where('account_id', $account_id)->first();
 
         if(!$ninja_client)
             return $transformed;
 
-        $agts = AccountGatewayToken::where('client_id', $ninja_client->id)->get();
+        $agts = AccountGatewayToken::on($db)->where('client_id', $ninja_client->id)->get();
         $is_default = true;
+
+        if(count($agts) == 0) {
+            $transformed[] = [
+                'client' => $ninja_client->toArray()
+            ];
+        }
 
         foreach($agts as $agt) {
 
@@ -456,7 +472,7 @@ trait GenerateMigrationResources
             if(!$payment_method)
                 continue;
 
-            $contact = Contact::where('id', $payment_method->contact_id)->withTrashed()->first();
+            $contact = Contact::on($db)->where('id', $payment_method->contact_id)->withTrashed()->first();
 
             $transformed[] = [
                 'id' => $payment_method->id,
@@ -468,7 +484,7 @@ trait GenerateMigrationResources
                 'gateway_type_id' => $payment_method->payment_type->gateway_type_id,
                 'is_default' => $is_default,
                 'meta' => $this->convertMeta($payment_method),
-                'client' => $contact->client->toArray(),
+                'client' => $ninja_client->toArray(),
                 'contacts' => $contact->client->contacts->toArray(),
             ];
         }
@@ -529,12 +545,12 @@ trait GenerateMigrationResources
                 'first_name' => $user->first_name ?: '',
                 'last_name' => $user->last_name ?: '',
                 'phone' => $user->phone ?: '',
-                'email' => $user->username,
+                'email' => str_contains($user->username, "@") ? $user->username : $user->email,
                 'confirmation_code' => $user->confirmation_code,
                 'failed_logins' => $user->failed_logins,
                 'referral_code' => $user->referral_code,
-                'oauth_user_id' => $user->oauth_user_id,
-                'oauth_provider_id' => $user->oauth_provider_id,
+                // 'oauth_user_id' => $user->oauth_user_id,
+                // 'oauth_provider_id' => $user->oauth_provider_id,
                 'google_2fa_secret' => '',
                 'accepted_terms_version' => $user->accepted_terms_version,
                 'password' => $user->password,
@@ -553,11 +569,9 @@ trait GenerateMigrationResources
     {
 
         $credits = [];
+        $export_credits = collect([]);
 
-        $export_credits = Invoice::where('account_id', $this->account->id)
-            ->where('balance', '<', '0')
-            ->where('invoice_type_id', '=', INVOICE_TYPE_STANDARD)
-            ->where('is_public', true)
+        $export_credits = Credit::where('account_id', $this->account->id)->where('amount', '>', 0)->whereIsDeleted(false)
             ->withTrashed()
             ->get();
 
@@ -569,35 +583,35 @@ trait GenerateMigrationResources
                 'client_id' => $credit->client_id,
                 'user_id' => $credit->user_id,
                 'company_id' => $credit->account_id,
-                'status_id' => $credit->invoice_status_id,
-                'design_id' => $this->getDesignId($credit->invoice_design_id),
-                'number' => $credit->invoice_number,
-                'discount' => $credit->discount ? $credit->discount*-1: 0,
-                'is_amount_discount' => $credit->is_amount_discount ?: false,
-                'po_number' => $credit->po_number ?: '',
-                'date' => $credit->invoice_date,
-                'last_sent_date' => $credit->last_sent_date,
-                'due_date' => $credit->due_date,
+                'status_id' => 2,
+                'design_id' => 2,
+                'number' => $credit->credit_number ?: null,
+                'discount' => 0,
+                'is_amount_discount' => 0,
+                'po_number' => '',
+                'date' => $credit->date,
+                'last_sent_date' => null,
+                'due_date' => null,
                 'uses_inclusive_taxes' => $this->account->inclusive_taxes,
                 'is_deleted' => $credit->is_deleted,
-                'footer' => $credit->invoice_footer ?: '',
-                'public_notes' => $credit->public_notes ?: '',
-                'private_notes' => $credit->private_notes ?: '',
-                'terms' => $credit->terms ?: '',
-                'tax_name1' => $credit->tax_name1,
-                'tax_name2' => $credit->tax_name2,
-                'tax_rate1' => $credit->tax_rate1,
-                'tax_rate2' => $credit->tax_rate2,
+                'footer' => '',
+                'public_notes' => $credit->public_notes,
+                'private_notes' => $credit->private_notes,
+                'terms' => '',
+                'tax_name1' => '',
+                'tax_name2' => '',
+                'tax_rate1' => 0,
+                'tax_rate2' => 0,
                 'tax_name3' => '',
                 'tax_rate3' => 0,
-                'custom_value1' => $credit->custom_value1 ?: '',
-                'custom_value2' => $credit->custom_value2 ?: '',
+                'custom_value1' => '',
+                'custom_value2' => '',
                 'next_send_date' => null,
                 'amount' => $credit->amount ? $credit->amount * -1: 0,
-                'balance' => $credit->balance ? $credit->balance * -1 : 0,
-                'partial' => $credit->partial ? $credit->partial * -1 : 0,
-                'partial_due_date' => $credit->partial_due_date,
-                'line_items' => $this->getCreditItems($credit->invoice_items),
+                'balance' => $credit->balance ? $credit->balance  * -1: 0,
+                'partial' => 0,
+                'partial_due_date' => null,
+                'line_items' => $this->getCreditItems($credit->balance),
                 'created_at' => $credit->created_at ? Carbon::parse($credit->created_at)->toDateString() : null,
                 'updated_at' => $credit->updated_at ? Carbon::parse($credit->updated_at)->toDateString() : null,
                 'deleted_at' => $credit->deleted_at ? Carbon::parse($credit->deleted_at)->toDateString() : null,
@@ -614,7 +628,7 @@ trait GenerateMigrationResources
         $invoices = [];
 
         $export_invoices = Invoice::where('account_id', $this->account->id)
-            ->where('amount', '>=', 0)
+            // ->where('amount', '>=', 0)
             ->where('invoice_type_id', INVOICE_TYPE_STANDARD)
             ->where('is_recurring', false)
             ->withTrashed()
@@ -800,8 +814,8 @@ trait GenerateMigrationResources
                 'due_date_days' => $this->transformDueDate($invoice),
                 'remaining_cycles' => $this->getRemainingCycles($invoice),
                 'invitations' => $this->getResourceInvitations($invoice->invitations, 'recurring_invoice_id'),
-                'auto_bill_enabled' => $this->calcAutoBillEnabled($invoice),
-                'auto_bill' => $this->calcAutoBill($invoice),
+                'auto_bill_enabled' => $this->calcAutoBill($invoice),
+                'auto_bill' => $this->calcAutoBillEnabled($invoice),
             ];
         }
 
@@ -811,13 +825,13 @@ trait GenerateMigrationResources
 
     private function calcAutoBillEnabled($invoice)
     {
-        if($invoice->auto_bill == 1)
+        if($invoice->auto_bill === 1)
             return 'off';
-        elseif($invoice->auto_bill == 2)
+        elseif($invoice->auto_bill === 2)
             return 'optin';
-        elseif($invoice->auto_bill == 3)
+        elseif($invoice->auto_bill === 3)
             return 'optout';
-        elseif($invoice->auto_bill == 4)
+        elseif($invoice->auto_bill === 4)
             return 'always';
         else
             return 'off';
@@ -1015,7 +1029,7 @@ trait GenerateMigrationResources
         if($invoice->is_public == 0)
             return 1;
 
-        if($invoice->end_date < now())
+        if($invoice->end_date && $invoice->end_date < now())
             return 4;
 
         return 1;
@@ -1136,43 +1150,33 @@ trait GenerateMigrationResources
         return $transformed;
     }
 
-    public function getCreditItems($items)
+    public function getCreditItems($balance)
     {
         info("get credit items");
 
         $transformed = [];
 
-        foreach ($items as $item) {
-
-            // if($item->cost < 0)
-            //     $item->cost = $item->cost * -1;
-
-            $item->qty = $item->qty * -1;
-
-            // if($item->discount < 0)
-            //     $item->discount = $item->discount * -1;
-
             $transformed[] = [
-                'id' => $item->id,
-                'quantity' => (float) $item->qty,
-                'cost' => (float) $item->cost,
-                'product_key' => $item->product_key,
-                'notes' => $item->notes,
-                'discount' => (float) $item->discount,
-                'tax_name1' => (string)$item->tax_name1,
-                'tax_rate1' => (float) $item->tax_rate1,
-                'tax_name2' => (string) $item->tax_name2,
-                'tax_rate2' => (float) $item->tax_rate2,
-                'tax_name3' => (string) '',
-                'tax_rate3' => (float) 0,
-                'date' => Carbon::parse($item->created_at)->toDateString(),
-                'custom_value1' => $item->custom_value1 ?: '',
-                'custom_value2' => $item->custom_value2 ?: '',
+                'id' => '',
+                'quantity' => (float) 1,
+                'cost' => (float) $balance,
+                'product_key' => trans('texts.balance'),
+                'notes' => trans('texts.credit_balance'),
+                'discount' => 0,
+                'tax_name1' => '',
+                'tax_rate1' => 0,
+                'tax_name2' => '',
+                'tax_rate2' => 0,
+                'tax_name3' => '',
+                'tax_rate3' => 0,
+                'date' => '',
+                'custom_value1' => '',
+                'custom_value2' => '',
                 'custom_value3' => '',
                 'custom_value4' => '',
-                'type_id' => (string)$item->invoice_item_type_id,
+                'type_id' => '1',
             ];
-        }
+
 
         return $transformed;
     }
@@ -1327,6 +1331,7 @@ trait GenerateMigrationResources
                 'refunded' => $payment->refunded ?: 0,
                 'date' => $payment->payment_date,
                 'transaction_reference' => $payment->transaction_reference ?: '',
+                'private_notes' => $payment->private_notes ?: '',
                 'payer_id' => $payment->payer_id,
                 'is_deleted' => (bool)$payment->is_deleted,
                 'exchange_rate' => $payment->exchange_rate ? number_format((float) $payment->exchange_rate, 6) : null,
@@ -1366,10 +1371,26 @@ trait GenerateMigrationResources
     const SEPA = 29;
     const GOCARDLESS = 30;
     const CRYPTO = 31;
+
+    const MOLLIE_BANK_TRANSFER = 34;
+    const KBC = 35;
+    const BANCONTACT = 36;
+    const IDEAL = 37;
+    const HOSTED_PAGE = 38;
+    const GIROPAY = 39;
+    const PRZELEWY24 = 40;
+    const EPS = 41;
+    const DIRECT_DEBIT = 42;
+    const BECS = 43;
+    const ACSS = 44;
+    const INSTANT_BANK_PAY = 45;
+    const FPX = 46;
     */
     private function transformPaymentType($payment_type_id)
     {
         switch ($payment_type_id) {
+            case 4:
+                return 42;
             case PAYMENT_TYPE_CREDIT:
                 return 32;
             case PAYMENT_TYPE_ACH:
@@ -1418,7 +1439,11 @@ trait GenerateMigrationResources
                 return 30;
             case PAYMENT_TYPE_BITCOIN:
                 return 31;
-
+            case 2:
+                return 1;
+            case 3:
+                return 2;
+                
             default:
                 return $payment_type_id;
         }
@@ -1543,7 +1568,7 @@ trait GenerateMigrationResources
             }
             catch(\Exception $e){
             
-                info($config);
+                // info($config);
 
             }
 
@@ -1748,6 +1773,9 @@ trait GenerateMigrationResources
                 'gateway_type_id' => $payment_method->payment_type->gateway_type_id,
                 'is_default' => $is_default,
                 'meta' => $this->convertMeta($payment_method),
+                'created_at' => $payment_method->created_at ? Carbon::parse($payment_method->created_at)->toDateString() : null,
+                'updated_at' => $payment_method->updated_at ? Carbon::parse($payment_method->updated_at)->toDateString() : null,
+                'deleted_at' => $payment_method->deleted_at ? Carbon::parse($payment_method->deleted_at)->toDateString() : null,
             ];
 
             $is_default = false;
@@ -2014,6 +2042,7 @@ trait GenerateMigrationResources
                 'company_id' => $vendor->account_id,
                 'user_id' => $vendor->user_id,
                 'name' => $vendor->name,
+                'currency_id' => $vendor->currency_id ? (string) $vendor->currency_id : (string) $this->account->currency_id,
                 //'balance' => $vendor->balance ?: 0,
                 //'paid_to_date' => $vendor->paid_to_date ?: 0,
                 'address1' => $vendor->address1,

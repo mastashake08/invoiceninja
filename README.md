@@ -25,17 +25,19 @@ The self-host zip includes all third party libraries whereas downloading the cod
 * [Support Forum](https://www.invoiceninja.com/forums/forum/support/)
 * [StackOverflow](https://stackoverflow.com/tags/invoice-ninja/)
 
-## Referral Program
-* Earn 50% of Pro & Enterprise Plans up to 4 years - [Learn more](https://www.invoiceninja.com/referral-program/)
-
 ## Mobile App
-* [iPhone](https://itunes.apple.com/us/app/invoice-ninja/id1435514417?ls=1&mt=8)
-* [Android](https://play.google.com/store/apps/details?id=com.invoiceninja.flutter)
-* [Source Code](https://github.com/invoiceninja/flutter-mobile)
+* [iPhone](https://apps.apple.com/us/app/invoice-ninja-v5/id1503970375#?platform=iphone)
+* [Android](https://play.google.com/store/apps/details?id=com.invoiceninja.app)
+* [Linux](https://github.com/invoiceninja/flutter-mobile)
+
+## Desktop App
+* [MacOS](https://apps.apple.com/app/id1503970375)
+* [Windows](https://microsoft.com/en-us/p/invoice-ninja/9n3f2bbcfdr6)
+* [MacOS Desktop](https://snapcraft.io/invoiceninja)
 
 ## Installation Options
 * [Ansible](https://github.com/invoiceninja/ansible-installer)
-* [Self-Host Zip](https://docs.invoiceninja.com/install.html)
+* [Self-Host Zip](https://invoice-ninja.readthedocs.io/en/latest/install.html)
 * [Docker File](https://hub.docker.com/r/invoiceninja/invoiceninja/)
 * [Cloudron](https://cloudron.io/store/com.invoiceninja.cloudronapp.html)
 * [Softaculous](https://www.softaculous.com/apps/ecommerce/Invoice_Ninja)
@@ -49,7 +51,7 @@ The self-host zip includes all third party libraries whereas downloading the cod
 ## Development
 * [API Documentation](https://invoice-ninja.readthedocs.io/en/latest/api.html)
 * [PHP SDK](https://github.com/invoiceninja/sdk-php)
-* [Zend Framework](https://github.com/alexz707/InvoiceNinjaModule)
+* [Laminas Framework](https://github.com/alexz707/InvoiceNinjaModule)
 * [Custom Module](https://invoice-ninja.readthedocs.io/en/latest/custom_modules.html) | [Watch Video](https://www.youtube.com/watch?v=8jJ-PYuq85k)
 
 ## Third Party Modules

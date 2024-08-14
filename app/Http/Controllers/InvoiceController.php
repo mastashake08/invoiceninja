@@ -25,9 +25,9 @@ use App\Services\RecurringInvoiceService;
 use Auth;
 use Cache;
 use DB;
+use Illuminate\Support\Facades\Session;
 use Redirect;
 use Request;
-use Session;
 use URL;
 use Utils;
 use View;
@@ -218,6 +218,9 @@ class InvoiceController extends BaseController
         if (! Auth::user()->hasPermission('view_client')) {
             $clients = $clients->where('clients.user_id', '=', Auth::user()->id);
         }
+
+        if($clientPublicId != 0)
+            $clients->where('public_id', $clientPublicId);
 
         $data = [
             'clients' => $clients->get(),
@@ -427,7 +430,7 @@ class InvoiceController extends BaseController
             $response = $this->emailRecurringInvoice($invoice);
         } else {
             $userId = Auth::user()->id;
-            $this->dispatch(new SendInvoiceEmail($invoice, $userId, $reminder, $template));
+            dispatch(new SendInvoiceEmail($invoice, $userId, $reminder, $template));
             $response = true;
         }
 

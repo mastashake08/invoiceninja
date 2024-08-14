@@ -64,5 +64,6 @@ class Kernel extends HttpKernel
         'lookup' => \App\Http\Middleware\DatabaseLookup::class,
         'permissions.required' => \App\Http\Middleware\PermissionsRequired::class,
         'migration' => \App\Http\Middleware\EligibleForMigration::class,
+        'migration_channel' => \App\Http\Middleware\MigrationLookup::class,
     ];
 }

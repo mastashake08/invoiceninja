@@ -99,6 +99,7 @@ class ExportMigrations extends Command
     private function export($user)
     {
         $this->account = $user->account;
+        Auth::login($user);
 
         $date = date('Y-m-d');
         $accountKey = $this->account->account_key;
@@ -124,7 +125,7 @@ class ExportMigrations extends Command
             'recurring_expenses' => $this->getRecurringExpenses(),
             'recurring_invoices' => $this->getRecurringInvoices(),
             'quotes' => $this->getQuotes(),
-            'payments' => array_merge($this->getPayments(), $this->getCredits()),
+            'payments' => $this->getPayments(),
             'documents' => $this->getDocuments(),
             'expense_categories' => $this->getExpenseCategories(),
             'task_statuses' => $this->getTaskStatuses(),
